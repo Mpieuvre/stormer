@@ -1,0 +1,9 @@
+{
+  "board": "uno",
+  "sensors": [
+    "dht11"
+  ],
+  "display": "lcd_i2c_16x2",
+  "wireless": "none",
+  "setup_complete": true
+}
