@@ -1,37 +1,37 @@
-"""Installateur Stormer — style classique Windows."""
+"""Installateur Stormer — interface moderne."""
 
 from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 
-from PIL import Image, ImageTk
+import customtkinter as ctk
 
-from stormer.branding import apply_window_icon, installer_banner_png, license_txt, logo_png
+from stormer.branding import apply_window_icon, license_txt, load_ctk_image
 from stormer.config import APP_NAME, APP_VERSION
 from stormer.installer_core import default_install_dir, has_existing, install, launch_app, uninstall
 
-# Style installateur classique
-C_WIN_BG = "#f0f0f0"
-C_PANEL = "#ffffff"
-C_TEXT = "#1a1a1a"
-C_MUTED = "#555555"
-C_GREEN = "#008000"
-C_GREEN_BAR = "#00a651"
-C_SIDEBAR = "#1e293b"
-C_BTN = "#e1e1e1"
+C_BG = "#0b0f14"
+C_CARD = "#151b26"
+C_CARD2 = "#1c2433"
+C_ACCENT = "#029CFF"
+C_ACCENT_DIM = "#1E2025"
+C_GREEN = "#22c55e"
+C_TEXT = "#e2e8f0"
+C_MUTED = "#64748b"
+
+STEP_LABELS = ("Bienvenue", "Licence", "Dossier", "Pret", "Installation", "Termine")
 
 
-class StormerInstaller(tk.Tk):
-    STEPS = ("welcome", "license", "folder", "ready", "install", "done")
-
+class StormerInstaller(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title(f"Installation de {APP_NAME} {APP_VERSION}")
-        self.geometry("620x420")
+        ctk.set_appearance_mode("dark")
+        self.title(f"Installation — {APP_NAME} {APP_VERSION}")
+        self.geometry("720x520")
         self.resizable(False, False)
-        self.configure(bg=C_WIN_BG)
+        self.configure(fg_color=C_BG)
         apply_window_icon(self)
 
         self._step_idx = 0
@@ -40,261 +40,216 @@ class StormerInstaller(tk.Tk):
         self._desktop_var = tk.BooleanVar(value=True)
         self._launch_var = tk.BooleanVar(value=True)
         self._install_dir = default_install_dir()
-        self._banner_img: ImageTk.PhotoImage | None = None
-        self._logo_img: ImageTk.PhotoImage | None = None
+        self._step_pills: list[ctk.CTkLabel] = []
+        self._progress: ctk.CTkProgressBar | None = None
+        self._status_var = tk.StringVar(value="")
 
         self._build_layout()
         self._show_step(0)
 
     def _build_layout(self) -> None:
-        # Bandeau lateral + contenu
-        self._sidebar = tk.Frame(self, width=164, bg=C_SIDEBAR)
-        self._sidebar.pack(side="left", fill="y")
-        self._sidebar.pack_propagate(False)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-        banner = installer_banner_png()
-        if banner.is_file():
-            img = Image.open(banner)
-            self._banner_img = ImageTk.PhotoImage(img)
-            tk.Label(self._sidebar, image=self._banner_img, bg=C_SIDEBAR, bd=0).pack(fill="both", expand=True)
-        else:
-            tk.Label(
-                self._sidebar, text="STORMER", fg="white", bg=C_SIDEBAR,
-                font=("Segoe UI", 16, "bold"),
-            ).pack(pady=40)
+        sidebar = ctk.CTkFrame(self, fg_color=C_ACCENT_DIM, width=200, corner_radius=0)
+        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.grid_propagate(False)
 
-        right = tk.Frame(self, bg=C_WIN_BG)
-        right.pack(side="left", fill="both", expand=True)
+        ctk.CTkFrame(sidebar, fg_color=C_ACCENT, height=4, corner_radius=0).pack(fill="x")
 
-        self._content = tk.Frame(right, bg=C_PANEL, highlightbackground="#c0c0c0", highlightthickness=1)
-        self._content.pack(fill="both", expand=True, padx=12, pady=(12, 6))
+        logo_box = ctk.CTkFrame(sidebar, fg_color="transparent")
+        logo_box.pack(pady=(28, 20))
+        logo = load_ctk_image(56)
+        if logo:
+            ctk.CTkLabel(logo_box, text="", image=logo).pack()
+        ctk.CTkLabel(
+            logo_box, text="STORMER", font=ctk.CTkFont(size=20, weight="bold"), text_color=C_ACCENT,
+        ).pack(pady=(8, 0))
+        ctk.CTkLabel(
+            logo_box, text=f"v{APP_VERSION}", font=ctk.CTkFont(size=11), text_color=C_MUTED,
+        ).pack()
 
-        # Barre boutons classique
-        btn_bar = tk.Frame(right, bg=C_WIN_BG)
-        btn_bar.pack(fill="x", padx=12, pady=(0, 10))
+        for i, label in enumerate(STEP_LABELS[:5]):
+            pill = ctk.CTkLabel(
+                sidebar, text=f"  {i + 1}. {label}  ",
+                font=ctk.CTkFont(size=11), text_color=C_MUTED,
+                anchor="w",
+            )
+            pill.pack(anchor="w", padx=16, pady=3)
+            self._step_pills.append(pill)
 
-        self._cancel_btn = tk.Button(
-            btn_bar, text="Annuler", width=10, command=self.destroy,
-            bg=C_BTN, relief="raised",
+        right = ctk.CTkFrame(self, fg_color="transparent")
+        right.grid(row=0, column=1, sticky="nsew", padx=20, pady=16)
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(0, weight=1)
+
+        self._content = ctk.CTkFrame(right, fg_color=C_CARD, corner_radius=16)
+        self._content.grid(row=0, column=0, sticky="nsew")
+        self._content.grid_columnconfigure(0, weight=1)
+        self._content.grid_rowconfigure(1, weight=1)
+
+        self._title_lbl = ctk.CTkLabel(
+            self._content, text="", font=ctk.CTkFont(size=20, weight="bold"), text_color=C_TEXT,
         )
-        self._cancel_btn.pack(side="right", padx=(4, 0))
+        self._title_lbl.grid(row=0, column=0, sticky="w", padx=24, pady=(22, 4))
 
-        self._next_btn = tk.Button(
-            btn_bar, text="Suivant >", width=12, command=self._next,
-            bg=C_BTN, relief="raised", default="active",
+        self._body = ctk.CTkFrame(self._content, fg_color="transparent")
+        self._body.grid(row=1, column=0, sticky="nsew", padx=24, pady=(0, 12))
+        self._body.grid_columnconfigure(0, weight=1)
+        self._body.grid_rowconfigure(0, weight=1)
+
+        footer = ctk.CTkFrame(right, fg_color="transparent")
+        footer.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+        footer.grid_columnconfigure(1, weight=1)
+
+        self._back_btn = ctk.CTkButton(
+            footer, text="Retour", width=100, height=36,
+            fg_color=C_CARD2, hover_color="#263044", command=self._prev,
         )
-        self._next_btn.pack(side="right", padx=4)
+        self._back_btn.grid(row=0, column=0)
 
-        self._back_btn = tk.Button(
-            btn_bar, text="< Retour", width=10, command=self._prev,
-            bg=C_BTN, relief="raised", state="disabled",
+        self._next_btn = ctk.CTkButton(
+            footer, text="Suivant", width=120, height=36,
+            fg_color=C_ACCENT, hover_color="#0284d4", command=self._next,
         )
-        self._back_btn.pack(side="right", padx=4)
+        self._next_btn.grid(row=0, column=2)
 
-    def _clear_content(self) -> None:
-        for w in self._content.winfo_children():
+    def _clear_body(self) -> None:
+        for w in self._body.winfo_children():
             w.destroy()
-
-    def _header(self, title: str, subtitle: str = "") -> None:
-        row = tk.Frame(self._content, bg=C_PANEL)
-        row.pack(fill="x", padx=16, pady=(14, 8))
-        logo_path = logo_png()
-        if logo_path.is_file():
-            img = Image.open(logo_path).resize((40, 40), Image.Resampling.LANCZOS)
-            self._logo_img = ImageTk.PhotoImage(img)
-            tk.Label(row, image=self._logo_img, bg=C_PANEL).pack(side="left", padx=(0, 10))
-        txt = tk.Frame(row, bg=C_PANEL)
-        txt.pack(side="left", fill="x", expand=True)
-        tk.Label(txt, text=title, font=("Segoe UI", 12, "bold"), bg=C_PANEL, fg=C_TEXT, anchor="w").pack(fill="x")
-        if subtitle:
-            tk.Label(txt, text=subtitle, font=("Segoe UI", 9), bg=C_PANEL, fg=C_MUTED, anchor="w").pack(fill="x")
 
     def _show_step(self, idx: int) -> None:
         self._step_idx = idx
         self._back_btn.configure(state="normal" if idx > 0 and idx < 5 else "disabled")
-        labels = {
-            0: "Suivant >",
-            1: "Suivant >",
-            2: "Suivant >",
-            3: "Installer",
-            4: "",
-            5: "Terminer",
-        }
-        self._next_btn.configure(text=labels.get(idx, "Suivant >"), state="normal")
+        next_labels = {0: "Suivant", 1: "Suivant", 2: "Suivant", 3: "Installer", 4: "", 5: "Terminer"}
+        self._next_btn.configure(text=next_labels.get(idx, "Suivant"), state="normal")
         if idx == 4:
             self._next_btn.configure(state="disabled")
             self._back_btn.configure(state="disabled")
-            self._cancel_btn.configure(state="disabled")
 
-        self._clear_content()
-        [
+        for i, pill in enumerate(self._step_pills):
+            if i == idx:
+                pill.configure(text_color=C_ACCENT, font=ctk.CTkFont(size=11, weight="bold"))
+            elif i < idx:
+                pill.configure(text_color=C_GREEN, font=ctk.CTkFont(size=11))
+            else:
+                pill.configure(text_color=C_MUTED, font=ctk.CTkFont(size=11))
+
+        self._clear_body()
+        pages = [
             self._page_welcome,
             self._page_license,
             self._page_folder,
             self._page_ready,
             self._page_install,
             self._page_done,
-        ][idx]()
+        ]
+        titles = [
+            "Bienvenue",
+            "Contrat de licence",
+            "Destination",
+            "Pret a installer",
+            "Installation",
+            "Termine",
+        ]
+        self._title_lbl.configure(text=titles[idx])
+        pages[idx]()
+
+    def _muted(self, parent, text: str, **kwargs) -> ctk.CTkLabel:
+        return ctk.CTkLabel(
+            parent, text=text, font=ctk.CTkFont(size=12), text_color=C_MUTED,
+            justify="left", anchor="nw", wraplength=420, **kwargs,
+        )
 
     def _page_welcome(self) -> None:
-        self._header("Bienvenue dans l'assistant d'installation de Stormer", f"Version {APP_VERSION}")
         extra = ""
         if has_existing(default_install_dir()):
-            extra = (
-                "\n\nUne version de Stormer est deja installee.\n"
-                "Elle sera desinstallee automatiquement avant la nouvelle installation."
-            )
-        tk.Label(
-            self._content,
-            text=(
-                "Cet assistant va installer Stormer sur votre ordinateur.\n\n"
-                "Stormer permet d'acquerir, afficher et analyser les donnees\n"
-                "de vos capteurs Arduino (temperature, humidite, etc.).\n\n"
-                "Il est recommande de fermer les autres applications\n"
-                "avant de continuer.\n\n"
-                "Cliquez sur Suivant pour continuer."
-                f"{extra}"
-            ),
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_TEXT, justify="left", anchor="nw",
-        ).pack(fill="both", expand=True, padx=20, pady=8)
+            extra = "\n\nUne version existante sera remplacee automatiquement."
+        self._muted(
+            self._body,
+            f"Cet assistant installe {APP_NAME} sur votre PC.\n\n"
+            "Acquisition, affichage et analyse IA de vos capteurs Arduino.\n\n"
+            "Fermez Stormer s'il est ouvert, puis cliquez sur Suivant."
+            f"{extra}",
+        ).pack(fill="both", expand=True)
 
     def _page_license(self) -> None:
-        self._header("Contrat de licence", "Vous devez accepter le contrat pour continuer.")
-        text_frame = tk.Frame(self._content, bg=C_PANEL)
-        text_frame.pack(fill="both", expand=True, padx=16, pady=4)
-
-        scroll = tk.Scrollbar(text_frame)
-        scroll.pack(side="right", fill="y")
-        box = tk.Text(
-            text_frame, wrap="word", height=12, font=("Consolas", 9),
-            yscrollcommand=scroll.set, bg="#fafafa", fg=C_TEXT, relief="sunken", bd=1,
+        box = ctk.CTkTextbox(
+            self._body, height=260, font=ctk.CTkFont(family="Consolas", size=10),
+            fg_color="#0d1117", text_color=C_TEXT,
         )
-        box.pack(side="left", fill="both", expand=True)
-        scroll.config(command=box.yview)
-
+        box.pack(fill="both", expand=True, pady=(0, 10))
         lic = license_txt()
         content = lic.read_text(encoding="utf-8") if lic.is_file() else "Licence non trouvee."
         box.insert("1.0", content)
         box.configure(state="disabled")
-
-        tk.Checkbutton(
-            self._content,
-            text="J'accepte les termes du contrat de licence",
-            variable=self._accept_var,
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_TEXT,
-            activebackground=C_PANEL,
-        ).pack(anchor="w", padx=18, pady=(4, 10))
+        ctk.CTkCheckBox(
+            self._body, text="J'accepte les termes du contrat de licence",
+            variable=self._accept_var, font=ctk.CTkFont(size=12),
+        ).pack(anchor="w")
 
     def _page_folder(self) -> None:
-        self._header("Destination", "Choisissez le dossier d'installation.")
-        tk.Label(
-            self._content, text="Stormer sera installe dans le dossier suivant :",
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_TEXT, anchor="w",
-        ).pack(fill="x", padx=18, pady=(8, 4))
+        self._muted(self._body, "Dossier d'installation :").pack(anchor="w", pady=(0, 8))
+        row = ctk.CTkFrame(self._body, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 12))
+        row.grid_columnconfigure(0, weight=1)
+        ctk.CTkEntry(row, textvariable=self._dir_var, height=36).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(row, text="Parcourir", width=100, command=self._browse).grid(row=0, column=1)
 
-        row = tk.Frame(self._content, bg=C_PANEL)
-        row.pack(fill="x", padx=18, pady=4)
-        tk.Entry(row, textvariable=self._dir_var, font=("Segoe UI", 9), width=48).pack(side="left", padx=(0, 6))
-        tk.Button(row, text="Parcourir...", command=self._browse, bg=C_BTN).pack(side="left")
-
-        tk.Checkbutton(
-            self._content, text="Creer un raccourci sur le Bureau",
-            variable=self._desktop_var, font=("Segoe UI", 9), bg=C_PANEL,
-        ).pack(anchor="w", padx=18, pady=(12, 2))
-        tk.Checkbutton(
-            self._content, text="Lancer Stormer a la fin de l'installation",
-            variable=self._launch_var, font=("Segoe UI", 9), bg=C_PANEL,
-        ).pack(anchor="w", padx=18, pady=2)
-
-        tk.Label(
-            self._content,
-            text="Espace requis : environ 120 Mo",
-            font=("Segoe UI", 8), bg=C_PANEL, fg=C_MUTED,
-        ).pack(anchor="w", padx=18, pady=(12, 0))
+        ctk.CTkCheckBox(
+            self._body, text="Raccourci sur le Bureau", variable=self._desktop_var,
+        ).pack(anchor="w", pady=4)
+        ctk.CTkCheckBox(
+            self._body, text="Lancer Stormer a la fin", variable=self._launch_var,
+        ).pack(anchor="w", pady=4)
+        self._muted(self._body, "Espace requis : ~120 Mo").pack(anchor="w", pady=(12, 0))
 
     def _page_ready(self) -> None:
-        self._header("Pret a installer", "Verifiez les parametres avant de continuer.")
-        reinstall = ""
         try:
             target = Path(self._dir_var.get().strip())
         except Exception:
             target = default_install_dir()
-        if has_existing(target):
-            reinstall = "Ancienne version : sera supprimee automatiquement.\n\n"
-        tk.Label(
-            self._content,
-            text=(
-                f"L'assistant va installer {APP_NAME} {APP_VERSION}.\n\n"
-                f"{reinstall}"
-                f"Dossier : {self._dir_var.get()}\n"
-                f"Raccourci Bureau : {'Oui' if self._desktop_var.get() else 'Non'}\n"
-                f"Menu Demarrer : Oui\n"
-                f"Documents\\Stormer : exports et sessions (conservees)\n\n"
-                "Cliquez sur Installer pour demarrer l'installation."
-            ),
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_TEXT, justify="left", anchor="nw",
-        ).pack(fill="both", expand=True, padx=20, pady=8)
+        reinstall = "Ancienne version : suppression automatique.\n\n" if has_existing(target) else ""
+        self._muted(
+            self._body,
+            f"{reinstall}"
+            f"Dossier : {self._dir_var.get()}\n"
+            f"Raccourci Bureau : {'Oui' if self._desktop_var.get() else 'Non'}\n"
+            f"Menu Demarrer : Oui\n"
+            f"Documents\\Stormer : conserve\n\n"
+            "Cliquez sur Installer pour demarrer.",
+        ).pack(fill="both", expand=True)
 
     def _page_install(self) -> None:
-        self._header("Installation en cours", "Veuillez patienter…")
-        tk.Label(
-            self._content, text="Installation de Stormer…",
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_TEXT,
-        ).pack(anchor="w", padx=18, pady=(8, 12))
-
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure(
-            "Green.Horizontal.TProgressbar",
-            troughcolor="#e0e0e0",
-            background=C_GREEN_BAR,
-            bordercolor="#c0c0c0",
-            lightcolor=C_GREEN_BAR,
-            darkcolor=C_GREEN,
-            thickness=22,
+        self._muted(self._body, "Installation en cours, veuillez patienter…").pack(anchor="w", pady=(0, 12))
+        self._progress = ctk.CTkProgressBar(
+            self._body, height=14, progress_color=C_GREEN, fg_color="#0d1117",
         )
-        self._progress = ttk.Progressbar(
-            self._content, style="Green.Horizontal.TProgressbar",
-            length=380, mode="determinate", maximum=100,
-        )
-        self._progress.pack(padx=18, pady=4)
-
-        self._status = tk.StringVar(value="Preparation…")
-        tk.Label(
-            self._content, textvariable=self._status,
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_MUTED,
-        ).pack(anchor="w", padx=18, pady=8)
-
-        self._file_lbl = tk.Label(
-            self._content, text="", font=("Segoe UI", 8), bg=C_PANEL, fg=C_MUTED, anchor="w",
-        )
-        self._file_lbl.pack(fill="x", padx=18)
-
+        self._progress.pack(fill="x", pady=(0, 10))
+        self._progress.set(0)
+        ctk.CTkLabel(
+            self._body, textvariable=self._status_var, font=ctk.CTkFont(size=11), text_color=C_MUTED,
+        ).pack(anchor="w")
         self.after(300, self._run_install)
 
     def _page_done(self) -> None:
-        self._header("Installation terminee", "Stormer a ete installe avec succes.")
-        tk.Label(
-            self._content,
-            text=(
-                "L'assistant a termine l'installation de Stormer.\n\n"
-                f"Dossier : {self._install_dir}\n"
-                "Raccourci : Bureau\\Stormer.lnk\n\n"
-                "Cliquez sur Terminer pour quitter l'assistant."
-            ),
-            font=("Segoe UI", 9), bg=C_PANEL, fg=C_TEXT, justify="left",
-        ).pack(fill="both", expand=True, padx=20, pady=8)
-        self._cancel_btn.configure(state="disabled")
+        self._muted(
+            self._body,
+            f"{APP_NAME} a ete installe avec succes.\n\n"
+            f"Dossier : {self._install_dir}\n"
+            f"Raccourci : Bureau\\{APP_NAME}.lnk\n\n"
+            "Cliquez sur Terminer pour quitter.",
+        ).pack(fill="both", expand=True)
 
     def _browse(self) -> None:
         path = filedialog.askdirectory(title="Dossier d'installation")
         if path:
             self._dir_var.set(path)
 
-    def _tick_progress(self, val: int, status: str, file: str = "") -> None:
-        self._progress["value"] = val
-        self._status.set(status)
-        self._file_lbl.configure(text=file)
+    def _tick_progress(self, val: float, status: str) -> None:
+        if self._progress:
+            self._progress.set(val)
+        self._status_var.set(status)
         self.update_idletasks()
 
     def _run_install(self) -> None:
@@ -305,13 +260,13 @@ class StormerInstaller(tk.Tk):
 
         try:
             if has_existing(self._install_dir):
-                self._tick_progress(10, "Desinstallation de l'ancienne version…", str(self._install_dir))
+                self._tick_progress(0.1, "Desinstallation de l'ancienne version…")
                 self.update()
                 uninstall(self._install_dir)
 
-            self._tick_progress(25, "Creation des dossiers…", "Documents\\Stormer")
+            self._tick_progress(0.25, "Creation des dossiers…")
             self.update()
-            self._tick_progress(50, "Copie de Stormer.exe…", str(self._install_dir / "Stormer.exe"))
+            self._tick_progress(0.5, "Copie de Stormer.exe…")
             self.update()
 
             install(
@@ -320,9 +275,9 @@ class StormerInstaller(tk.Tk):
                 start_menu_shortcut=True,
             )
 
-            self._tick_progress(85, "Creation des raccourcis…", "Bureau\\Stormer.lnk")
+            self._tick_progress(0.85, "Creation des raccourcis…")
             self.update()
-            self._tick_progress(100, "Installation terminee.", "")
+            self._tick_progress(1.0, "Installation terminee.")
 
             if self._launch_var.get():
                 launch_app(self._install_dir)
@@ -338,10 +293,7 @@ class StormerInstaller(tk.Tk):
             self.destroy()
             return
         if step == 1 and not self._accept_var.get():
-            messagebox.showwarning(
-                "Contrat de licence",
-                "Vous devez accepter le contrat de licence pour continuer.",
-            )
+            messagebox.showwarning("Licence", "Acceptez le contrat pour continuer.")
             return
         if step == 2 and not self._dir_var.get().strip():
             messagebox.showwarning("Dossier", "Choisissez un dossier d'installation.")
